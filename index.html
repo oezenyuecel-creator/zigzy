@@ -81,6 +81,13 @@
   .skin .act.owned{background:rgba(255,255,255,.16);color:#fff;}
   .skin .act.active{background:transparent;color:var(--path);}
   .skin .act.locked{background:rgba(255,255,255,.06);color:rgba(255,255,255,.45);cursor:default;}
+  #zoneBanner{position:fixed;top:34%;left:0;right:0;text-align:center;z-index:15;
+    font-size:30px;font-weight:900;letter-spacing:1px;color:#fff;pointer-events:none;
+    opacity:0;text-shadow:0 4px 22px rgba(0,0,0,.6);}
+  #zoneBanner.show{animation:zb 1.7s ease-out forwards;}
+  @keyframes zb{0%{opacity:0;transform:translateY(16px) scale(.9)}
+    18%{opacity:1;transform:translateY(0) scale(1)}80%{opacity:1}
+    100%{opacity:0;transform:translateY(-10px)}}
 </style>
 </head>
 <body>
@@ -89,6 +96,7 @@
 <button id="soundBtn" aria-label="Ton an/aus">🔊</button>
 <div id="hud"><div id="score">0</div></div>
 <div id="coins"><span class="dot"></span><span id="coinval">0</span></div>
+<div id="zoneBanner"></div>
 
 <!-- Start screen -->
 <div class="overlay show" id="startScreen">
@@ -154,6 +162,7 @@ let speed=BASE_SPEED;
 let score=0, coins=0, best=+(localStorage.getItem('zigzy_best')||0);
 let shake=0;
 let fall=0;            // death fall animation
+let lastZone=0;        // for zone-change banner
 let bgDots=[];
 let camX=0,camY=0;
 
@@ -180,6 +189,25 @@ function saveShop(){
 function curSkin(){ return SKINS.find(s=>s.id===selSkin)||SKINS[0]; }
 function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
 
+// ---- visual zones: the line + background evolve as you progress (loops forever) ----
+const THEMES=[
+  {name:'Aqua',   a:[39,224,201],  b:[27,168,214],  bg1:[22,26,46], bg2:[11,12,22]},
+  {name:'Sunset', a:[255,138,76],  b:[255,78,138],  bg1:[42,20,40], bg2:[16,8,20]},
+  {name:'Neon',   a:[166,107,255], b:[40,170,255],  bg1:[22,16,48], bg2:[10,8,26]},
+  {name:'Forest', a:[182,255,61],  b:[39,224,160],  bg1:[16,34,24], bg2:[7,16,12]},
+  {name:'Magma',  a:[255,91,46],   b:[255,206,61],  bg1:[42,14,14], bg2:[18,6,6]},
+  {name:'Ice',    a:[120,220,255], b:[160,140,255], bg1:[18,28,48], bg2:[8,12,26]},
+];
+const ZONE_LEN=40;   // score points per zone
+function lerp3(c1,c2,t){ return [Math.round(c1[0]+(c2[0]-c1[0])*t), Math.round(c1[1]+(c2[1]-c1[1])*t), Math.round(c1[2]+(c2[2]-c1[2])*t)]; }
+function themeColors(){
+  const z=score/ZONE_LEN, base=Math.floor(z);
+  const i=base%THEMES.length, j=(base+1)%THEMES.length, frac=z-base;
+  const t = frac<0.75 ? 0 : (frac-0.75)/0.25;   // hold the zone, then morph near its end
+  const A=THEMES[i], B=THEMES[j];
+  return { a:lerp3(A.a,B.a,t), b:lerp3(A.b,B.b,t), bg1:lerp3(A.bg1,B.bg1,t), bg2:lerp3(A.bg2,B.bg2,t), zoneAbs:base };
+}
+
 function seedBgDots(){
   bgDots=[];
   for(let i=0;i<60;i++) bgDots.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.8+.4,s:Math.random()*.4+.1});
@@ -204,7 +232,7 @@ function extendPath(){
 function reset(){
   path=[]; lastDir=1; ball={x:0,y:0,dir:1};
   trail=[]; particles=[]; speed=BASE_SPEED; score=0; coins=0; shake=0; fall=0;
-  camX=0; camY=0;
+  camX=0; camY=0; lastZone=0;
   // ball starts EXACTLY on the centerline; first segment runs in ball.dir (=1)
   path.push({x:0,y:0,gem:false,got:false});
   const d=DIRS[1];
@@ -326,6 +354,13 @@ function burst(x,y,color,n){
   }
 }
 
+function showZoneBanner(theme){
+  const el=$('zoneBanner'); el.textContent=theme.name;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+  burst(ball.x, ball.y, `rgb(${theme.a[0]},${theme.a[1]},${theme.a[2]})`, 18);
+  beep(740,0.12,'triangle',0.05);
+}
+
 function die(){
   state='dead';
   shake=18; fall=0;
@@ -361,6 +396,8 @@ function update(dt){
     ball.x+=d.x*speed*dt; ball.y+=d.y*speed*dt;
     score=Math.max(score,Math.floor(ball.y/14));
     $('score').textContent=score;
+    const za=Math.floor(score/ZONE_LEN);
+    if(za>lastZone){ lastZone=za; showZoneBanner(THEMES[za%THEMES.length]); }
 
     extendPath();
     // gem collection
@@ -399,9 +436,11 @@ function worldToScreen(x,y){
 
 function render(){
   const cs=curSkin(); const tr=hexToRgb(cs.trail);
-  // background gradient
+  const tc=themeColors();
+  // background gradient (zone-driven)
   const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#161a2e'); g.addColorStop(1,'#0b0c16');
+  g.addColorStop(0,`rgb(${tc.bg1[0]},${tc.bg1[1]},${tc.bg1[2]})`);
+  g.addColorStop(1,`rgb(${tc.bg2[0]},${tc.bg2[1]},${tc.bg2[2]})`);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
   // parallax dots
@@ -419,11 +458,12 @@ function render(){
   if(path.length>1){
     ctx.lineCap='round'; ctx.lineJoin='round';
     // glow
-    ctx.strokeStyle='rgba(39,224,201,.18)'; ctx.lineWidth=PATH_W+18;
+    ctx.strokeStyle=`rgba(${tc.a[0]},${tc.a[1]},${tc.a[2]},.18)`; ctx.lineWidth=PATH_W+18;
     drawPath();
-    // body
+    // body (zone-driven gradient)
     const pg=ctx.createLinearGradient(0,0,W,H);
-    pg.addColorStop(0,'#27e0c9'); pg.addColorStop(1,'#1ba8d6');
+    pg.addColorStop(0,`rgb(${tc.a[0]},${tc.a[1]},${tc.a[2]})`);
+    pg.addColorStop(1,`rgb(${tc.b[0]},${tc.b[1]},${tc.b[2]})`);
     ctx.strokeStyle=pg; ctx.lineWidth=PATH_W; drawPath();
     // inner line
     ctx.strokeStyle='rgba(255,255,255,.12)'; ctx.lineWidth=3; drawPath();
