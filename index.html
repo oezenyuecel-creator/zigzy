@@ -85,6 +85,14 @@
     font-size:30px;font-weight:900;letter-spacing:1px;color:#fff;pointer-events:none;
     opacity:0;text-shadow:0 4px 22px rgba(0,0,0,.6);}
   #zoneBanner.show{animation:zb 1.7s ease-out forwards;}
+  .cont-ring{position:relative;width:148px;height:148px;border:none;background:none;cursor:pointer;padding:0;transition:transform .1s;}
+  .cont-ring:active{transform:scale(.94);}
+  .cont-ring svg{display:block;transform:rotate(-90deg);}
+  #contProg{stroke:var(--path);}
+  .cont-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
+  #contNum{font-size:48px;font-weight:900;color:#fff;line-height:1;}
+  .cont-go{font-size:13px;font-weight:800;color:var(--path);letter-spacing:1px;}
+  .cont-note{font-size:12px;opacity:.55;font-weight:600;}
   @keyframes zb{0%{opacity:0;transform:translateY(16px) scale(.9)}
     18%{opacity:1;transform:translateY(0) scale(1)}80%{opacity:1}
     100%{opacity:0;transform:translateY(-10px)}}
@@ -129,6 +137,22 @@
   <button class="btn ghost" id="shopClose">Zurück</button>
 </div>
 
+<!-- Continue (revive) screen -->
+<div class="overlay hidden" id="continueScreen">
+  <div class="lbl">Weiterspielen?</div>
+  <button id="continueBtn" class="cont-ring" aria-label="Weiter">
+    <svg width="148" height="148" viewBox="0 0 148 148">
+      <circle cx="74" cy="74" r="54" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.12)" stroke-width="9"/>
+      <circle id="contProg" cx="74" cy="74" r="54" fill="none" stroke-width="9" stroke-linecap="round"
+        stroke-dasharray="339.29" stroke-dashoffset="0"></circle>
+    </svg>
+    <span class="cont-center"><span id="contNum">3</span><span class="cont-go">▶ Weiter</span></span>
+  </button>
+  <div class="cont-note">📺 In der App später: kurzes Video ansehen</div>
+  <div class="sub" id="contScore">Score 0</div>
+  <button class="btn ghost" id="giveupBtn">Aufgeben</button>
+</div>
+
 <script>
 const cv = document.getElementById('game');
 const ctx = cv.getContext('2d');
@@ -163,6 +187,8 @@ let score=0, coins=0, best=+(localStorage.getItem('zigzy_best')||0);
 let shake=0;
 let fall=0;            // death fall animation
 let lastZone=0;        // for zone-change banner
+let continued=0;       // continues used this run
+let reviveGrace=0;     // brief invincibility after a continue
 let bgDots=[];
 let camX=0,camY=0;
 
@@ -199,6 +225,7 @@ const THEMES=[
   {name:'Ice',    a:[120,220,255], b:[160,140,255], bg1:[18,28,48], bg2:[8,12,26]},
 ];
 const ZONE_LEN=40;   // score points per zone
+const MAX_CONT=1;    // free continues per run (the future rewarded-ad slot)
 function lerp3(c1,c2,t){ return [Math.round(c1[0]+(c2[0]-c1[0])*t), Math.round(c1[1]+(c2[1]-c1[1])*t), Math.round(c1[2]+(c2[2]-c1[2])*t)]; }
 function themeColors(){
   const z=score/ZONE_LEN, base=Math.floor(z);
@@ -232,7 +259,7 @@ function extendPath(){
 function reset(){
   path=[]; lastDir=1; ball={x:0,y:0,dir:1};
   trail=[]; particles=[]; speed=BASE_SPEED; score=0; coins=0; shake=0; fall=0;
-  camX=0; camY=0; lastZone=0;
+  camX=0; camY=0; lastZone=0; continued=0; reviveGrace=0;
   // ball starts EXACTLY on the centerline; first segment runs in ball.dir (=1)
   path.push({x:0,y:0,gem:false,got:false});
   const d=DIRS[1];
@@ -366,7 +393,49 @@ function die(){
   shake=18; fall=0;
   burst(ball.x,ball.y,'#ff5b7a',26);
   beep(180,0.25,'sawtooth',0.06);
-  setTimeout(showGameOver,650);
+  if(continued < MAX_CONT) setTimeout(showContinueScreen,420);
+  else setTimeout(showGameOver,650);
+}
+
+// ---- continue (revive) ----
+const CONT_TIME=3000;
+let contStart=0, contRAF=null;
+function showContinueScreen(){
+  if(state!=='dead') return;          // player may have already moved on
+  $('contScore').textContent='Score '+score;
+  $('continueScreen').classList.remove('hidden'); $('continueScreen').classList.add('show');
+  document.body.classList.remove('show-hud');
+  contStart=performance.now(); tickContinue();
+}
+function tickContinue(){
+  const C=339.29, t=(performance.now()-contStart)/CONT_TIME, left=Math.max(0,1-t);
+  $('contProg').style.strokeDashoffset=(C*(1-left)).toFixed(1);
+  $('contNum').textContent=Math.ceil(left*3);
+  if(t>=1){ giveUp(); return; }
+  contRAF=requestAnimationFrame(tickContinue);
+}
+function stopContinueTick(){ if(contRAF) cancelAnimationFrame(contRAF); contRAF=null; }
+function hideContinue(){ stopContinueTick(); $('continueScreen').classList.add('hidden'); $('continueScreen').classList.remove('show'); }
+function giveUp(){ hideContinue(); showGameOver(); }
+function reviveToPath(){
+  let best=1e9, bx=ball.x, by=ball.y, dir=ball.dir;
+  for(let i=1;i<path.length;i++){
+    const a=path[i-1], b=path[i], dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy; if(L2===0) continue;
+    const tt=Math.max(0,Math.min(1,((ball.x-a.x)*dx+(ball.y-a.y)*dy)/L2));
+    const px=a.x+tt*dx, py=a.y+tt*dy, d=Math.hypot(ball.x-px,ball.y-py);
+    if(d<best){ best=d; bx=px; by=py; dir=dx>=0?1:-1; }
+  }
+  ball.x=bx; ball.y=by; ball.dir=dir; ball.y_fall=0;
+}
+function doContinue(){
+  hideContinue();
+  continued++;
+  reviveToPath();
+  trail=[]; reviveGrace=0.6; shake=0;
+  document.body.classList.add('show-hud');
+  state='playing';
+  beep(880,0.1,'triangle',0.06);
+  burst(ball.x,ball.y,'#ffffff',18);
 }
 
 function showGameOver(){
@@ -409,8 +478,9 @@ function update(dt){
     }
     // trail
     trail.push({x:ball.x,y:ball.y}); if(trail.length>26) trail.shift();
-    // off-path?
-    if(distToPath() > PATH_W/2){ die(); }
+    // off-path? (brief grace right after a continue)
+    if(reviveGrace>0){ reviveGrace-=dt; }
+    else if(distToPath() > PATH_W/2){ die(); }
   } else if(state==='dead'){
     fall+=dt;
     ball.y -= 120*dt; // keep drifting along last dir while falling visually
@@ -592,6 +662,10 @@ function flashGems(){
 $('shopBtnStart').addEventListener('click',e=>{e.stopPropagation();openShop('startScreen');});
 $('shopBtnOver').addEventListener('click',e=>{e.stopPropagation();openShop('overScreen');});
 $('shopClose').addEventListener('click',e=>{e.stopPropagation();closeShop();});
+
+// ---- continue buttons ----
+$('continueBtn').addEventListener('click',e=>{e.stopPropagation();doContinue();});
+$('giveupBtn').addEventListener('click',e=>{e.stopPropagation();giveUp();});
 
 reset();
 requestAnimationFrame(loop);
