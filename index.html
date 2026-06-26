@@ -201,11 +201,11 @@ resize(); window.addEventListener('resize',resize);
 // ---- Config ----
 const SQRT2 = Math.SQRT2;
 const DIRS = { 1:{x:1/SQRT2,y:1/SQRT2}, '-1':{x:-1/SQRT2,y:1/SQRT2} };
-const PATH_W = 64;          // corridor width
+const PATH_W = 74;          // corridor width (wider = more forgiving)
 const BALL_R = 13;
-const BASE_SPEED = 250;     // px/sec
-const MAX_SPEED = 560;
-const SEG_MIN = 70, SEG_MAX = 230;
+const BASE_SPEED = 205;     // px/sec (calmer start)
+const MAX_SPEED = 470;
+const SEG_MIN = 70, SEG_MAX = 240;  // base bounds; eased by progress in extendPath
 
 // ---- State ----
 let state='ready';
@@ -284,7 +284,12 @@ function extendPath(){
     const last=path[path.length-1] || {x:0,y:-40};
     if(path.length===0){ path.push({x:0,y:-40,gem:false,got:false}); continue; }
     lastDir*=-1;
-    const len=SEG_MIN+Math.random()*(SEG_MAX-SEG_MIN);
+    // ease difficulty in: longer segments early, gradually shorter
+    const approxScore=Math.max(0, last.y/14);
+    const ease=Math.min(1, approxScore/130);
+    const minL=125 - 55*ease;        // 125 → 70
+    const maxL=SEG_MAX - 20*ease;    // 240 → 220
+    const len=minL+Math.random()*(maxL-minL);
     const d=DIRS[lastDir];
     const np={x:last.x+d.x*len, y:last.y+d.y*len, gem:Math.random()<0.28, got:false};
     path.push(np);
@@ -498,7 +503,7 @@ function loop(now){
 
 function update(dt){
   if(state==='playing'){
-    speed=Math.min(MAX_SPEED, BASE_SPEED + score*1.4);
+    speed=Math.min(MAX_SPEED, BASE_SPEED + score*0.8);
     const d=DIRS[ball.dir];
     ball.x+=d.x*speed*dt; ball.y+=d.y*speed*dt;
     score=Math.max(score,Math.floor(ball.y/14));
