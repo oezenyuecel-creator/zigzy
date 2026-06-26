@@ -93,6 +93,21 @@
   #contNum{font-size:48px;font-weight:900;color:#fff;line-height:1;}
   .cont-go{font-size:13px;font-weight:800;color:var(--path);letter-spacing:1px;}
   .cont-note{font-size:12px;opacity:.55;font-weight:600;}
+  .btn-row{display:flex;gap:10px;}
+  .btn.small{padding:13px 22px;font-size:15px;box-shadow:none;}
+  .lb-name{display:flex;gap:8px;width:100%;max-width:340px;}
+  .lb-name input{flex:1;font-size:16px;font-weight:700;padding:12px 14px;border-radius:12px;border:none;
+    background:rgba(255,255,255,.1);color:#fff;outline:none;}
+  .lb-name input::placeholder{color:rgba(255,255,255,.4);}
+  .lb-name .btn{padding:12px 20px;}
+  .lb-list{width:100%;max-width:340px;max-height:48vh;overflow-y:auto;
+    display:flex;flex-direction:column;gap:6px;font-weight:700;-webkit-overflow-scrolling:touch;}
+  .lb-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;background:rgba(255,255,255,.05);}
+  .lb-row.me{background:rgba(39,224,201,.18);border:1px solid rgba(39,224,201,.4);}
+  .lb-rank{width:26px;text-align:center;opacity:.55;font-size:14px;}
+  .lb-nm{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .lb-sc{font-weight:900;color:var(--ball);}
+  .lb-empty{opacity:.6;font-weight:600;padding:20px;text-align:center;}
   @keyframes zb{0%{opacity:0;transform:translateY(16px) scale(.9)}
     18%{opacity:1;transform:translateY(0) scale(1)}80%{opacity:1}
     100%{opacity:0;transform:translateY(-10px)}}
@@ -111,7 +126,10 @@
   <div class="title">Zigzy</div>
   <div class="sub">Ein Tap. Bleib auf dem Pfad.</div>
   <button class="btn" id="playBtn">Spielen</button>
-  <button class="btn ghost" id="shopBtnStart">Skins 🎨</button>
+  <div class="btn-row">
+    <button class="btn ghost small" id="shopBtnStart">Skins 🎨</button>
+    <button class="btn ghost small" id="lbBtnStart">🏆 Top</button>
+  </div>
   <div class="hint"><div class="tap-anim"></div>Tippen = Richtung wechseln</div>
 </div>
 
@@ -126,7 +144,10 @@
   </div>
   <button class="btn" id="retryBtn">Nochmal</button>
   <button class="btn ghost" id="shareBtn">Score teilen</button>
-  <button class="btn ghost" id="shopBtnOver">Skins 🎨</button>
+  <div class="btn-row">
+    <button class="btn ghost small" id="shopBtnOver">Skins 🎨</button>
+    <button class="btn ghost small" id="lbBtnOver">🏆 Top</button>
+  </div>
 </div>
 
 <!-- Shop screen -->
@@ -151,6 +172,17 @@
   <div class="cont-note">📺 In der App später: kurzes Video ansehen</div>
   <div class="sub" id="contScore">Score 0</div>
   <button class="btn ghost" id="giveupBtn">Aufgeben</button>
+</div>
+
+<!-- Leaderboard screen -->
+<div class="overlay hidden" id="lbScreen">
+  <div class="shop-title">🏆 Rangliste</div>
+  <div class="lb-name">
+    <input id="nameInput" maxlength="16" placeholder="Dein Name" autocomplete="off" />
+    <button class="btn" id="nameSave">OK</button>
+  </div>
+  <div class="lb-list" id="lbList">Lädt…</div>
+  <button class="btn ghost" id="lbClose">Zurück</button>
 </div>
 
 <script>
@@ -226,6 +258,11 @@ const THEMES=[
 ];
 const ZONE_LEN=40;   // score points per zone
 const MAX_CONT=1;    // free continues per run (the future rewarded-ad slot)
+// ---- global leaderboard (Supabase Data API) ----
+const SUPA_URL='https://pvoodzyqvosqmfpiqmdv.supabase.co';
+const SUPA_KEY='sb_publishable_m-ACNZpjp7oZg1W0b5mCeQ_FPhFj4Zp';
+let playerName=(localStorage.getItem('zigzy_name')||'').slice(0,16);
+let pendingScore=0;
 function lerp3(c1,c2,t){ return [Math.round(c1[0]+(c2[0]-c1[0])*t), Math.round(c1[1]+(c2[1]-c1[1])*t), Math.round(c1[2]+(c2[2]-c1[2])*t)]; }
 function themeColors(){
   const z=score/ZONE_LEN, base=Math.floor(z);
@@ -442,6 +479,7 @@ function showGameOver(){
   totalGems += coins; saveShop();
   const isNew=score>best;
   if(isNew){ best=score; localStorage.setItem('zigzy_best',best); }
+  if(score>0){ if(playerName) submitScore(playerName,score); else pendingScore=Math.max(pendingScore,score); }
   $('finalScore').textContent=score;
   $('finalBest').textContent=best;
   $('finalCoins').textContent=coins;
@@ -666,6 +704,65 @@ $('shopClose').addEventListener('click',e=>{e.stopPropagation();closeShop();});
 // ---- continue buttons ----
 $('continueBtn').addEventListener('click',e=>{e.stopPropagation();doContinue();});
 $('giveupBtn').addEventListener('click',e=>{e.stopPropagation();giveUp();});
+
+// ---- leaderboard ----
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function submitScore(name, sc){
+  if(!name || sc<=0) return;
+  try{
+    await fetch(SUPA_URL+'/rest/v1/scores',{method:'POST',
+      headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify({name:name.slice(0,16), score:Math.floor(sc)})});
+  }catch(e){}
+}
+async function fetchTop(){
+  try{
+    const r=await fetch(SUPA_URL+'/rest/v1/scores?select=name,score&order=score.desc&limit=100',
+      {headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}});
+    if(!r.ok) return null;
+    const rows=await r.json();
+    const seen={}, out=[];                 // keep each name's best only
+    for(const row of rows){ if(seen[row.name]==null){ seen[row.name]=1; out.push(row); } }
+    return out.slice(0,20);
+  }catch(e){ return null; }
+}
+let lbReturn='startScreen';
+function openLb(from){
+  lbReturn=from;
+  $(from).classList.remove('show'); $(from).classList.add('hidden');
+  $('nameInput').value=playerName;
+  $('lbScreen').classList.remove('hidden'); $('lbScreen').classList.add('show');
+  loadLb();
+}
+function closeLb(){
+  $('lbScreen').classList.add('hidden'); $('lbScreen').classList.remove('show');
+  $(lbReturn).classList.remove('hidden'); $(lbReturn).classList.add('show');
+}
+async function loadLb(){
+  const el=$('lbList'); el.textContent='Lädt…';
+  const top=await fetchTop();
+  if(!top){ el.innerHTML='<div class="lb-empty">Keine Verbindung 😕</div>'; return; }
+  if(top.length===0){ el.innerHTML='<div class="lb-empty">Noch keine Scores — sei der Erste! 🥇</div>'; return; }
+  el.innerHTML='';
+  top.forEach((row,i)=>{
+    const r=document.createElement('div'); r.className='lb-row'+(row.name===playerName?' me':'');
+    r.innerHTML=`<span class="lb-rank">${i+1}</span><span class="lb-nm">${escapeHtml(row.name)}</span><span class="lb-sc">${row.score}</span>`;
+    el.appendChild(r);
+  });
+}
+async function saveName(){
+  const v=$('nameInput').value.trim().slice(0,16);
+  if(!v) return;
+  playerName=v; localStorage.setItem('zigzy_name',v);
+  if(pendingScore>0){ await submitScore(playerName,pendingScore); pendingScore=0; }
+  else if(best>0){ await submitScore(playerName,best); }
+  beep(660,0.06); loadLb();
+}
+$('lbBtnStart').addEventListener('click',e=>{e.stopPropagation();openLb('startScreen');});
+$('lbBtnOver').addEventListener('click',e=>{e.stopPropagation();openLb('overScreen');});
+$('lbClose').addEventListener('click',e=>{e.stopPropagation();closeLb();});
+$('nameSave').addEventListener('click',e=>{e.stopPropagation();saveName();});
+$('nameInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); saveName(); } });
 
 reset();
 requestAnimationFrame(loop);
