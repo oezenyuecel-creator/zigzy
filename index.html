@@ -142,6 +142,11 @@
     <div class="stat"><div class="v" id="finalBest">0</div><div class="lbl">Best</div></div>
     <div class="stat"><div class="v" id="finalCoins">0</div><div class="lbl">Gems</div></div>
   </div>
+  <div class="lb-name hidden" id="overName">
+    <input id="overNameInput" maxlength="16" placeholder="Name für die Rangliste" autocomplete="off" />
+    <button class="btn" id="overNameSave">🏆</button>
+  </div>
+  <div class="sub hidden" id="overLbMsg">🏆 In der Rangliste!</div>
   <button class="btn" id="retryBtn">Nochmal</button>
   <button class="btn ghost" id="shareBtn">Score teilen</button>
   <div class="btn-row">
@@ -493,7 +498,22 @@ function showGameOver(){
   totalGems += coins; saveShop();
   const isNew=score>best;
   if(isNew){ best=score; localStorage.setItem('zigzy_best',best); }
-  if(score>0){ if(playerName) submitScore(playerName,score); else pendingScore=Math.max(pendingScore,score); }
+  // leaderboard: auto-track personal bests; prompt for a name once if none set yet
+  if(score>0){
+    if(playerName){
+      if(isNew) submitScore(playerName, score);
+      $('overName').classList.add('hidden');
+      $('overLbMsg').textContent = isNew ? '🏆 Neuer Ranglisten-Rekord!' : '🏆 In der Rangliste';
+      $('overLbMsg').classList.remove('hidden');
+    } else {
+      pendingScore=Math.max(pendingScore, best);
+      $('overNameInput').value='';
+      $('overName').classList.remove('hidden');
+      $('overLbMsg').classList.add('hidden');
+    }
+  } else {
+    $('overName').classList.add('hidden'); $('overLbMsg').classList.add('hidden');
+  }
   $('finalScore').textContent=score;
   $('finalBest').textContent=best;
   $('finalCoins').textContent=coins;
@@ -796,6 +816,21 @@ $('lbBtnOver').addEventListener('click',e=>{e.stopPropagation();openLb('overScre
 $('lbClose').addEventListener('click',e=>{e.stopPropagation();closeLb();});
 $('nameSave').addEventListener('click',e=>{e.stopPropagation();saveName();});
 $('nameInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); saveName(); } });
+
+function saveOverName(){
+  const v=$('overNameInput').value.trim().slice(0,16);
+  if(!v) return;
+  playerName=v; localStorage.setItem('zigzy_name',v);
+  const sc=pendingScore>0?pendingScore:best;
+  if(sc>0) submitScore(playerName, sc);
+  pendingScore=0;
+  $('overName').classList.add('hidden');
+  $('overLbMsg').textContent='🏆 In der Rangliste eingetragen!';
+  $('overLbMsg').classList.remove('hidden');
+  beep(660,0.06);
+}
+$('overNameSave').addEventListener('click',e=>{e.stopPropagation();saveOverName();});
+$('overNameInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); saveOverName(); } });
 
 reset();
 requestAnimationFrame(loop);
