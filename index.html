@@ -98,7 +98,7 @@
   #contNum{font-size:48px;font-weight:900;color:#fff;line-height:1;}
   .cont-go{font-size:13px;font-weight:800;color:var(--path);letter-spacing:1px;}
   .cont-note{font-size:12px;opacity:.55;font-weight:600;}
-  .btn-row{display:flex;gap:10px;}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
   .btn.small{padding:13px 22px;font-size:15px;box-shadow:none;}
   .lb-name{display:flex;gap:8px;width:100%;max-width:340px;}
   .lb-name input{flex:1;font-size:16px;font-weight:700;padding:12px 14px;border-radius:12px;border:none;
@@ -132,7 +132,7 @@
   <div class="sub">Ein Tap. Bleib auf dem Pfad.</div>
   <button class="btn" id="playBtn">Spielen</button>
   <div class="btn-row">
-    <button class="btn ghost small" id="shopBtnStart">Musik 🎵</button>
+    <button class="btn ghost small" id="shopBtnStart">Personalisieren 🎨🎵</button>
     <button class="btn ghost small" id="lbBtnStart">🏆 Top</button>
   </div>
   <div class="hint"><div class="tap-anim"></div>Tippen = Richtung wechseln</div>
@@ -155,7 +155,7 @@
   <button class="btn" id="retryBtn">Nochmal</button>
   <button class="btn ghost" id="shareBtn">Score teilen</button>
   <div class="btn-row">
-    <button class="btn ghost small" id="shopBtnOver">Musik 🎵</button>
+    <button class="btn ghost small" id="shopBtnOver">Personalisieren 🎨🎵</button>
     <button class="btn ghost small" id="lbBtnOver">🏆 Top</button>
   </div>
 </div>
@@ -740,7 +740,7 @@ $('shareBtn').addEventListener('click',async e=>{
 let shopReturn='startScreen';
 function openShop(from){
   shopReturn=from;
-  shopTab='music';
+  shopTab='skins';
   $(from).classList.remove('show'); $(from).classList.add('hidden');
   renderShop();
   $('shopScreen').classList.remove('hidden'); $('shopScreen').classList.add('show');
