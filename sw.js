@@ -1,4 +1,4 @@
-const CACHE = 'zigzy-v11';
+const CACHE = 'zigzy-v12';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png'

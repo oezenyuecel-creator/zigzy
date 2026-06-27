@@ -132,7 +132,7 @@
   <div class="sub">Ein Tap. Bleib auf dem Pfad.</div>
   <button class="btn" id="playBtn">Spielen</button>
   <div class="btn-row">
-    <button class="btn ghost small" id="shopBtnStart">Skins 🎨</button>
+    <button class="btn ghost small" id="shopBtnStart">Musik 🎵</button>
     <button class="btn ghost small" id="lbBtnStart">🏆 Top</button>
   </div>
   <div class="hint"><div class="tap-anim"></div>Tippen = Richtung wechseln</div>
@@ -155,7 +155,7 @@
   <button class="btn" id="retryBtn">Nochmal</button>
   <button class="btn ghost" id="shareBtn">Score teilen</button>
   <div class="btn-row">
-    <button class="btn ghost small" id="shopBtnOver">Skins 🎨</button>
+    <button class="btn ghost small" id="shopBtnOver">Musik 🎵</button>
     <button class="btn ghost small" id="lbBtnOver">🏆 Top</button>
   </div>
 </div>
@@ -740,6 +740,7 @@ $('shareBtn').addEventListener('click',async e=>{
 let shopReturn='startScreen';
 function openShop(from){
   shopReturn=from;
+  shopTab='music';
   $(from).classList.remove('show'); $(from).classList.add('hidden');
   renderShop();
   $('shopScreen').classList.remove('hidden'); $('shopScreen').classList.add('show');
