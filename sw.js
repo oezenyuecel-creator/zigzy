@@ -1,4 +1,4 @@
-const CACHE = 'zigzy-v12';
+const CACHE = 'zigzy-v13';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
   './icon-180.png', './icon-192.png', './icon-512.png'
@@ -13,5 +13,19 @@ self.addEventListener('activate', e => {
   );
 });
 self.addEventListener('fetch', e => {
-  e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+  const req = e.request;
+  const accept = req.headers.get('accept') || '';
+  // Network-first for the page itself, so updates show up immediately (offline -> cached fallback)
+  if (req.mode === 'navigate' || (req.method === 'GET' && accept.includes('text/html'))) {
+    e.respondWith(
+      fetch(req).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put('./index.html', copy));
+        return res;
+      }).catch(() => caches.match('./index.html').then(r => r || caches.match('./')))
+    );
+    return;
+  }
+  // Cache-first for static assets (icons, manifest)
+  e.respondWith(caches.match(req).then(r => r || fetch(req)));
 });
