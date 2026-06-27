@@ -69,6 +69,11 @@
   #soundBtn:active{transform:scale(.9);}
   .gembar{display:flex;align-items:center;gap:8px;font-size:20px;font-weight:800;color:var(--ball);}
   .shop-title{font-size:32px;font-weight:900;letter-spacing:-1px;}
+  .shop-tabs{display:flex;gap:8px;}
+  .shop-tab{border:none;cursor:pointer;font-size:15px;font-weight:800;padding:10px 20px;border-radius:999px;
+    background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);transition:transform .1s;}
+  .shop-tab:active{transform:scale(.95);}
+  .shop-tab.active{background:var(--path);color:#0e0f1a;}
   .shop-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;width:100%;max-width:360px;
     max-height:56vh;overflow-y:auto;padding:4px;-webkit-overflow-scrolling:touch;}
   .skin{background:rgba(255,255,255,.06);border-radius:18px;padding:14px 8px;
@@ -157,8 +162,11 @@
 
 <!-- Shop screen -->
 <div class="overlay hidden" id="shopScreen">
-  <div class="shop-title">Skins</div>
   <div class="gembar"><span class="dot"></span><span id="shopGems">0</span> Gems</div>
+  <div class="shop-tabs">
+    <button class="shop-tab active" id="tabSkins">🎨 Skins</button>
+    <button class="shop-tab" id="tabMusic">🎵 Musik</button>
+  </div>
   <div class="shop-grid" id="shopGrid"></div>
   <button class="btn ghost" id="shopClose">Zurück</button>
 </div>
@@ -255,6 +263,19 @@ function saveShop(){
 }
 function curSkin(){ return SKINS.find(s=>s.id===selSkin)||SKINS[0]; }
 function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; }
+
+// ---- music tracks (buyable with gems, like skins) ----
+const TRACKS=[
+  {id:'classic', name:'Classic', cost:0,   color:'#27e0c9', bpm:112, roots:[220.00,174.61,261.63,196.00], arp:'triangle', bass:'triangle', cutoff:3200},
+  {id:'chill',   name:'Chill',   cost:80,  color:'#7ad7ff', bpm:88,  roots:[196.00,146.83,220.00,164.81], arp:'sine',     bass:'sine',     cutoff:1500},
+  {id:'drive',   name:'Drive',   cost:170, color:'#ff8a3d', bpm:132, roots:[220.00,261.63,196.00,293.66], arp:'sawtooth', bass:'triangle', cutoff:2600},
+  {id:'retro',   name:'8-Bit',   cost:300, color:'#b6ff3d', bpm:120, roots:[261.63,233.08,196.00,220.00], arp:'square',   bass:'square',   cutoff:5200},
+  {id:'dark',    name:'Dark',    cost:480, color:'#a06bff', bpm:100, roots:[164.81,123.47,146.83,110.00], arp:'triangle', bass:'sine',     cutoff:1250},
+];
+let ownedTracks = (()=>{ try{ return JSON.parse(localStorage.getItem('zigzy_tracks')||'["classic"]'); }catch(e){ return ['classic']; } })();
+let selTrack = localStorage.getItem('zigzy_track')||'classic';
+function curTrack(){ return TRACKS.find(t=>t.id===selTrack)||TRACKS[0]; }
+function saveTracks(){ localStorage.setItem('zigzy_tracks',JSON.stringify(ownedTracks)); localStorage.setItem('zigzy_track',selTrack); }
 
 // ---- visual zones: the line + background evolve as you progress (loops forever) ----
 const THEMES=[
@@ -370,8 +391,7 @@ function beep(freq,dur,type='sine',vol=0.05){
 // Procedural loop: bass + arpeggio + kick + hats over Am–F–C–G
 const Music=(()=>{
   let playing=false, timer=null, step=0, nextTime=0, bus=null, filt=null;
-  const BPM=112, S=60/BPM/4;                 // duration of a 16th note
-  const roots=[220.00,174.61,261.63,196.00]; // A, F, C, G (one per bar)
+  let T=null, S=0;                           // current track + 16th-note duration
   function tone(freq,t,dur,type,vol){
     const o=actx.createOscillator(), g=actx.createGain();
     o.type=type; o.frequency.value=freq; o.connect(g); g.connect(bus);
@@ -397,12 +417,13 @@ const Music=(()=>{
   function schedule(){
     if(!playing) return;
     while(nextTime < actx.currentTime + 0.14){
-      const bar=Math.floor(step/16)%4, inBar=step%16, root=roots[bar];
-      if(inBar%4===0) tone(root/2, nextTime, 0.24, 'triangle', 0.17);   // bass (quarters)
+      const bar=Math.floor(step/16)%4, inBar=step%16, root=T.roots[bar];
+      const arpVol=(T.arp==='sine'||T.arp==='triangle')?0.06:0.045;
+      if(inBar%4===0) tone(root/2, nextTime, 0.24, T.bass, 0.17);       // bass (quarters)
       if(inBar===0||inBar===8) kick(nextTime);                          // kick on beats 1 & 3
       if(inBar%2===0){                                                   // arpeggio (consonant tones)
         const tones=[root, root*1.5, root*2, root*3];
-        tone(tones[step%tones.length], nextTime, 0.2, 'triangle', 0.06);
+        tone(tones[step%tones.length], nextTime, 0.2, T.arp, arpVol);
       }
       if(inBar%2===1) hat(nextTime,0.05);                               // offbeat hats
       nextTime+=S; step++;
@@ -412,12 +433,14 @@ const Music=(()=>{
   return {
     start(){
       if(playing) return; ensureAudio(); if(!actx) return;
+      T=curTrack(); S=60/T.bpm/4;
       playing=true;
-      filt=actx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=3200;
+      filt=actx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=T.cutoff;
       bus=actx.createGain(); bus.gain.value=0.5;
       bus.connect(filt); filt.connect(actx.destination);
       step=0; nextTime=actx.currentTime+0.06; schedule();
     },
+    restart(){ if(playing){ this.stop(); this.start(); } },
     stop(){
       playing=false; if(timer) clearTimeout(timer); timer=null;
       if(bus){ try{bus.disconnect();}catch(e){} bus=null; }
@@ -725,27 +748,55 @@ function closeShop(){
   $('shopScreen').classList.add('hidden'); $('shopScreen').classList.remove('show');
   $(shopReturn).classList.remove('hidden'); $(shopReturn).classList.add('show');
 }
+let shopTab='skins';
+function skinCard(s){
+  const card=document.createElement('div');
+  card.className='skin'+(s.id===selSkin?' active':'');
+  const prev=document.createElement('div'); prev.className='prev';
+  if(s.fx==='rainbow') prev.style.background='conic-gradient(#ff4e8a,#ffd34e,#b6ff3d,#27e0c9,#19f0ff,#a06bff,#ff4e8a)';
+  else prev.style.background=`radial-gradient(circle at 35% 30%, rgba(255,255,255,.6), ${s.ball})`;
+  if(s.fx==='glow') prev.style.boxShadow=`0 0 16px ${s.ball}`;
+  const nm=document.createElement('div'); nm.className='nm'; nm.textContent=s.name;
+  const btn=document.createElement('button'); btn.className='act';
+  const isOwned=owned.includes(s.id);
+  if(s.premium && !isOwned){ btn.textContent='Bald'; btn.classList.add('locked'); }
+  else if(s.id===selSkin){ btn.textContent='Aktiv'; btn.classList.add('active'); }
+  else if(isOwned){ btn.textContent='Wählen'; btn.classList.add('owned');
+    btn.onclick=()=>{ selSkin=s.id; saveShop(); beep(660,0.05); renderShop(); }; }
+  else { btn.innerHTML='💎 '+s.cost; btn.onclick=()=>buySkin(s); }
+  card.appendChild(prev); card.appendChild(nm); card.appendChild(btn);
+  return card;
+}
+function trackCard(t){
+  const card=document.createElement('div');
+  card.className='skin'+(t.id===selTrack?' active':'');
+  const prev=document.createElement('div'); prev.className='prev';
+  prev.style.background=`radial-gradient(circle at 50% 42%, rgba(255,255,255,.3), ${t.color})`;
+  prev.style.display='flex'; prev.style.alignItems='center'; prev.style.justifyContent='center'; prev.style.fontSize='20px';
+  prev.textContent='🎵';
+  const nm=document.createElement('div'); nm.className='nm'; nm.textContent=t.name;
+  const btn=document.createElement('button'); btn.className='act';
+  const isOwned=ownedTracks.includes(t.id);
+  if(t.id===selTrack){ btn.textContent='Aktiv'; btn.classList.add('active'); }
+  else if(isOwned){ btn.textContent='Wählen'; btn.classList.add('owned'); btn.onclick=()=>selectTrack(t); }
+  else { btn.innerHTML='💎 '+t.cost; btn.onclick=()=>buyTrack(t); }
+  card.appendChild(prev); card.appendChild(nm); card.appendChild(btn);
+  return card;
+}
+function previewTrack(){ if(soundOn){ ensureAudio(); Music.stop(); Music.start(); } }  // hear it right away
+function selectTrack(t){ selTrack=t.id; saveTracks(); previewTrack(); beep(660,0.05); renderShop(); }
+function buyTrack(t){
+  if(totalGems < t.cost){ beep(160,0.18,'sawtooth',0.06); flashGems(); return; }
+  totalGems-=t.cost; ownedTracks.push(t.id); selTrack=t.id; saveShop(); saveTracks();
+  previewTrack(); beep(880,0.1,'triangle',0.06); renderShop();
+}
 function renderShop(){
   $('shopGems').textContent=totalGems;
+  $('tabSkins').classList.toggle('active', shopTab==='skins');
+  $('tabMusic').classList.toggle('active', shopTab==='music');
   const grid=$('shopGrid'); grid.innerHTML='';
-  for(const s of SKINS){
-    const card=document.createElement('div');
-    card.className='skin'+(s.id===selSkin?' active':'');
-    const prev=document.createElement('div'); prev.className='prev';
-    if(s.fx==='rainbow') prev.style.background='conic-gradient(#ff4e8a,#ffd34e,#b6ff3d,#27e0c9,#19f0ff,#a06bff,#ff4e8a)';
-    else prev.style.background=`radial-gradient(circle at 35% 30%, rgba(255,255,255,.6), ${s.ball})`;
-    if(s.fx==='glow') prev.style.boxShadow=`0 0 16px ${s.ball}`;
-    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=s.name;
-    const btn=document.createElement('button'); btn.className='act';
-    const isOwned=owned.includes(s.id);
-    if(s.premium && !isOwned){ btn.textContent='Bald'; btn.classList.add('locked'); }
-    else if(s.id===selSkin){ btn.textContent='Aktiv'; btn.classList.add('active'); }
-    else if(isOwned){ btn.textContent='Wählen'; btn.classList.add('owned');
-      btn.onclick=()=>{ selSkin=s.id; saveShop(); beep(660,0.05); renderShop(); }; }
-    else { btn.innerHTML='💎 '+s.cost; btn.onclick=()=>buySkin(s); }
-    card.appendChild(prev); card.appendChild(nm); card.appendChild(btn);
-    grid.appendChild(card);
-  }
+  if(shopTab==='music'){ for(const t of TRACKS) grid.appendChild(trackCard(t)); }
+  else { for(const s of SKINS) grid.appendChild(skinCard(s)); }
 }
 function buySkin(s){
   if(totalGems < s.cost){ beep(160,0.18,'sawtooth',0.06); flashGems(); return; }
@@ -759,6 +810,8 @@ function flashGems(){
 $('shopBtnStart').addEventListener('click',e=>{e.stopPropagation();openShop('startScreen');});
 $('shopBtnOver').addEventListener('click',e=>{e.stopPropagation();openShop('overScreen');});
 $('shopClose').addEventListener('click',e=>{e.stopPropagation();closeShop();});
+$('tabSkins').addEventListener('click',e=>{e.stopPropagation();shopTab='skins';renderShop();});
+$('tabMusic').addEventListener('click',e=>{e.stopPropagation();shopTab='music';renderShop();});
 
 // ---- continue buttons ----
 $('continueBtn').addEventListener('click',e=>{e.stopPropagation();doContinue();});
