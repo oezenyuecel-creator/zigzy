@@ -233,8 +233,11 @@ const SKINS=[
   {id:'rose',    name:'Rosé',    cost:60,  ball:'#ff4e8a', trail:'#ff9cc2'},
   {id:'violet',  name:'Violett', cost:120, ball:'#a06bff', trail:'#cdb0ff'},
   {id:'lime',    name:'Lime',    cost:200, ball:'#b6ff3d', trail:'#dcff96'},
-  {id:'fire',    name:'Feuer',   cost:0, premium:true, ball:'#ff5b2e', trail:'#ffb03d'},
-  {id:'gold',    name:'Gold',    cost:0, premium:true, ball:'#ffe14d', trail:'#fff6c0'},
+  {id:'neon',    name:'Neon',    cost:150, ball:'#19f0ff', trail:'#9bfcff', fx:'glow'},
+  {id:'fire',    name:'Feuer',   cost:300, ball:'#ff5b2e', trail:'#ffb03d', fx:'fire'},
+  {id:'galaxy',  name:'Galaxis', cost:450, ball:'#b98cff', trail:'#e6d4ff', fx:'sparkle'},
+  {id:'rainbow', name:'Regenbogen', cost:700, ball:'#ff4e8a', trail:'#ffffff', fx:'rainbow'},
+  {id:'gold',    name:'Gold',    cost:0, premium:true, ball:'#ffe14d', trail:'#fff6c0', fx:'glow'},
 ];
 let totalGems = +(localStorage.getItem('zigzy_gems')||0);
 let owned = (()=>{ try{ return JSON.parse(localStorage.getItem('zigzy_owned')||'["classic"]'); }catch(e){ return ['classic']; } })();
@@ -432,6 +435,7 @@ function showZoneBanner(theme){
 
 function die(){
   state='dead';
+  captureRevive();          // remember a safe spot NOW, before the death drift moves the ball
   shake=18; fall=0;
   burst(ball.x,ball.y,'#ff5b7a',26);
   beep(180,0.25,'sawtooth',0.06);
@@ -459,21 +463,26 @@ function tickContinue(){
 function stopContinueTick(){ if(contRAF) cancelAnimationFrame(contRAF); contRAF=null; }
 function hideContinue(){ stopContinueTick(); $('continueScreen').classList.add('hidden'); $('continueScreen').classList.remove('show'); }
 function giveUp(){ hideContinue(); showGameOver(); }
-function reviveToPath(){
-  let best=1e9, bx=ball.x, by=ball.y, dir=ball.dir;
+let reviveX=0, reviveY=0, reviveDir=1;
+function captureRevive(){   // snap to nearest path point, set back from the corner for reaction time
+  let best=1e9;
   for(let i=1;i<path.length;i++){
     const a=path[i-1], b=path[i], dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy; if(L2===0) continue;
     const tt=Math.max(0,Math.min(1,((ball.x-a.x)*dx+(ball.y-a.y)*dy)/L2));
     const px=a.x+tt*dx, py=a.y+tt*dy, d=Math.hypot(ball.x-px,ball.y-py);
-    if(d<best){ best=d; bx=px; by=py; dir=dx>=0?1:-1; }
+    if(d<best){
+      best=d;
+      const segLen=Math.sqrt(L2), back=Math.min(45, tt*segLen);
+      reviveX=px-(dx/segLen)*back; reviveY=py-(dy/segLen)*back; reviveDir=dx>=0?1:-1;
+    }
   }
-  ball.x=bx; ball.y=by; ball.dir=dir; ball.y_fall=0;
 }
 function doContinue(){
   hideContinue();
   continued++;
-  reviveToPath();
-  trail=[]; reviveGrace=0.6; shake=0;
+  ball.x=reviveX; ball.y=reviveY; ball.dir=reviveDir; ball.y_fall=0;
+  camX=ball.x; camY=ball.y;            // snap camera so the ball doesn't fly in from outside
+  trail=[]; particles=[]; reviveGrace=0.85; shake=0;
   document.body.classList.add('show-hud');
   state='playing';
   beep(880,0.1,'triangle',0.06);
@@ -521,6 +530,16 @@ function update(dt){
     }
     // trail
     trail.push({x:ball.x,y:ball.y}); if(trail.length>26) trail.shift();
+    // skin effects: emit particles
+    const csfx=curSkin().fx;
+    if(csfx==='sparkle' && Math.random()<0.6){
+      particles.push({x:ball.x+(Math.random()-.5)*18, y:ball.y+(Math.random()-.5)*18,
+        vx:(Math.random()-.5)*30, vy:(Math.random()-.5)*30, life:0.7, color:'#ffffff', r:Math.random()*2+1});
+    } else if(csfx==='fire'){
+      for(let k=0;k<2;k++) particles.push({x:ball.x+(Math.random()-.5)*10, y:ball.y,
+        vx:(Math.random()-.5)*26, vy:-30-Math.random()*40, life:0.5,
+        color:(Math.random()<.5?'#ff7a2e':'#ffd34e'), r:Math.random()*2.4+1});
+    }
     // off-path? (brief grace right after a continue)
     if(reviveGrace>0){ reviveGrace-=dt; }
     else if(distToPath() > PATH_W/2){ die(); }
@@ -548,7 +567,14 @@ function worldToScreen(x,y){
 }
 
 function render(){
-  const cs=curSkin(); const tr=hexToRgb(cs.trail);
+  const cs=curSkin();
+  const rainbow = cs.fx==='rainbow';
+  const hue = (performance.now()/10)%360;
+  const ballCol = rainbow ? `hsl(${hue},95%,60%)` : cs.ball;
+  const tr = hexToRgb(cs.trail);
+  let glow = 20;
+  if(cs.fx==='glow') glow = 28 + Math.sin(performance.now()/180)*12;
+  else if(cs.fx==='fire' || rainbow) glow = 26;
   const tc=themeColors();
   // background gradient (zone-driven)
   const g=ctx.createLinearGradient(0,0,0,H);
@@ -599,7 +625,7 @@ function render(){
   for(let i=0;i<trail.length;i++){
     const [sx,sy]=worldToScreen(trail[i].x, trail[i].y + (state==='dead'?-(ball.y_fall||0):0));
     const a=i/trail.length;
-    ctx.fillStyle=`rgba(${tr[0]},${tr[1]},${tr[2]},${a*0.5})`;
+    ctx.fillStyle = rainbow ? `hsla(${(hue+i*8)%360},95%,62%,${a*0.55})` : `rgba(${tr[0]},${tr[1]},${tr[2]},${a*0.5})`;
     ctx.beginPath(); ctx.arc(sx,sy,BALL_R*a*0.9,0,7); ctx.fill();
   }
 
@@ -607,8 +633,8 @@ function render(){
   const fallOff = state==='dead' ? (ball.y_fall||0) : 0;
   const [bx,by]=worldToScreen(ball.x, ball.y - fallOff);
   ctx.save();
-  ctx.shadowColor=cs.ball; ctx.shadowBlur=20;
-  ctx.fillStyle=cs.ball;
+  ctx.shadowColor=ballCol; ctx.shadowBlur=glow;
+  ctx.fillStyle=ballCol;
   ctx.beginPath(); ctx.arc(bx,by,BALL_R,0,7); ctx.fill();
   ctx.fillStyle='rgba(255,255,255,.6)';
   ctx.beginPath(); ctx.arc(bx-4,by-4,4,0,7); ctx.fill();
@@ -680,7 +706,9 @@ function renderShop(){
     const card=document.createElement('div');
     card.className='skin'+(s.id===selSkin?' active':'');
     const prev=document.createElement('div'); prev.className='prev';
-    prev.style.background=`radial-gradient(circle at 35% 30%, rgba(255,255,255,.6), ${s.ball})`;
+    if(s.fx==='rainbow') prev.style.background='conic-gradient(#ff4e8a,#ffd34e,#b6ff3d,#27e0c9,#19f0ff,#a06bff,#ff4e8a)';
+    else prev.style.background=`radial-gradient(circle at 35% 30%, rgba(255,255,255,.6), ${s.ball})`;
+    if(s.fx==='glow') prev.style.boxShadow=`0 0 16px ${s.ball}`;
     const nm=document.createElement('div'); nm.className='nm'; nm.textContent=s.name;
     const btn=document.createElement('button'); btn.className='act';
     const isOwned=owned.includes(s.id);
