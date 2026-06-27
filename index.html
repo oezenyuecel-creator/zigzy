@@ -226,6 +226,7 @@ let fall=0;            // death fall animation
 let lastZone=0;        // for zone-change banner
 let continued=0;       // continues used this run
 let reviveGrace=0;     // brief invincibility after a continue
+let reviveSlow=0;      // slow-motion ease-in timer after a continue
 let bgDots=[];
 let camX=0,camY=0;
 
@@ -266,6 +267,7 @@ const THEMES=[
 ];
 const ZONE_LEN=40;   // score points per zone
 const MAX_CONT=1;    // free continues per run (the future rewarded-ad slot)
+const REVIVE_SLOW=1.2;  // seconds of slow-motion ease-in after a continue
 // ---- global leaderboard (Supabase Data API) ----
 const SUPA_URL='https://pvoodzyqvosqmfpiqmdv.supabase.co';
 const SUPA_KEY='sb_publishable_m-ACNZpjp7oZg1W0b5mCeQ_FPhFj4Zp';
@@ -309,7 +311,7 @@ function extendPath(){
 function reset(){
   path=[]; lastDir=1; ball={x:0,y:0,dir:1};
   trail=[]; particles=[]; speed=BASE_SPEED; score=0; coins=0; shake=0; fall=0;
-  camX=0; camY=0; lastZone=0; continued=0; reviveGrace=0;
+  camX=0; camY=0; lastZone=0; continued=0; reviveGrace=0; reviveSlow=0;
   // ball starts EXACTLY on the centerline; first segment runs in ball.dir (=1)
   path.push({x:0,y:0,gem:false,got:false});
   const d=DIRS[1];
@@ -469,16 +471,19 @@ function stopContinueTick(){ if(contRAF) cancelAnimationFrame(contRAF); contRAF=
 function hideContinue(){ stopContinueTick(); $('continueScreen').classList.add('hidden'); $('continueScreen').classList.remove('show'); }
 function giveUp(){ hideContinue(); showGameOver(); }
 let reviveX=0, reviveY=0, reviveDir=1;
-function captureRevive(){   // snap to nearest path point, set back from the corner for reaction time
+function captureRevive(){   // place revive with guaranteed runway before the next corner
+  const RUNWAY=130;
   let best=1e9;
   for(let i=1;i<path.length;i++){
     const a=path[i-1], b=path[i], dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy; if(L2===0) continue;
-    const tt=Math.max(0,Math.min(1,((ball.x-a.x)*dx+(ball.y-a.y)*dy)/L2));
-    const px=a.x+tt*dx, py=a.y+tt*dy, d=Math.hypot(ball.x-px,ball.y-py);
+    const segLen=Math.sqrt(L2);
+    const tProj=Math.max(0,Math.min(1,((ball.x-a.x)*dx+(ball.y-a.y)*dy)/L2));
+    const px=a.x+tProj*dx, py=a.y+tProj*dy, d=Math.hypot(ball.x-px,ball.y-py);
     if(d<best){
       best=d;
-      const segLen=Math.sqrt(L2), back=Math.min(45, tt*segLen);
-      reviveX=px-(dx/segLen)*back; reviveY=py-(dy/segLen)*back; reviveDir=dx>=0?1:-1;
+      // sit back so ~RUNWAY px remain before the next corner (path[i]); clamp to segment start
+      const tRev=Math.max(0, Math.min(tProj, 1 - RUNWAY/segLen));
+      reviveX=a.x+tRev*dx; reviveY=a.y+tRev*dy; reviveDir=dx>=0?1:-1;
     }
   }
 }
@@ -487,7 +492,7 @@ function doContinue(){
   continued++;
   ball.x=reviveX; ball.y=reviveY; ball.dir=reviveDir; ball.y_fall=0;
   camX=ball.x; camY=ball.y;            // snap camera so the ball doesn't fly in from outside
-  trail=[]; particles=[]; reviveGrace=0.85; shake=0;
+  trail=[]; particles=[]; reviveGrace=0.85; reviveSlow=REVIVE_SLOW; shake=0;
   document.body.classList.add('show-hud');
   state='playing';
   beep(880,0.1,'triangle',0.06);
@@ -533,6 +538,7 @@ function loop(now){
 function update(dt){
   if(state==='playing'){
     speed=Math.min(MAX_SPEED, BASE_SPEED + score*0.8);
+    if(reviveSlow>0){ speed*=0.45+0.55*(1-reviveSlow/REVIVE_SLOW); reviveSlow-=dt; }
     const d=DIRS[ball.dir];
     ball.x+=d.x*speed*dt; ball.y+=d.y*speed*dt;
     score=Math.max(score,Math.floor(ball.y/14));
