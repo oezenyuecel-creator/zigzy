@@ -115,6 +115,22 @@
   .lb-nm{flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .lb-sc{font-weight:900;color:var(--ball);}
   .lb-empty{opacity:.6;font-weight:600;padding:20px;text-align:center;}
+  #dailyBtn{position:relative;}
+  .badge{position:absolute;top:-3px;right:-3px;width:15px;height:15px;border-radius:50%;
+    background:#ff4e8a;box-shadow:0 0 8px #ff4e8a;border:2px solid #0e0f1a;}
+  .daily-reward{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;max-width:340px;
+    background:rgba(255,255,255,.05);border-radius:18px;padding:18px;}
+  .dr-streak{font-size:20px;font-weight:800;}
+  .daily-missions{display:flex;flex-direction:column;gap:10px;width:100%;max-width:340px;}
+  .mission{background:rgba(255,255,255,.05);border-radius:14px;padding:12px 14px;
+    display:flex;flex-direction:column;gap:7px;font-weight:700;}
+  .m-top{display:flex;justify-content:space-between;align-items:center;font-size:14px;}
+  .m-rew{color:var(--ball);display:flex;align-items:center;}
+  .m-bar{height:7px;background:rgba(255,255,255,.1);border-radius:99px;overflow:hidden;}
+  .m-fill{height:100%;background:linear-gradient(90deg,var(--path),var(--ball));border-radius:99px;transition:width .3s;}
+  .m-prog{font-size:12px;opacity:.55;text-align:right;}
+  .m-done{font-size:13px;font-weight:800;color:var(--path);text-align:center;}
+  .mission .btn.small{align-self:center;}
   @keyframes zb{0%{opacity:0;transform:translateY(16px) scale(.9)}
     18%{opacity:1;transform:translateY(0) scale(1)}80%{opacity:1}
     100%{opacity:0;transform:translateY(-10px)}}
@@ -133,6 +149,7 @@
   <div class="title">Zigzy</div>
   <div class="sub">Ein Tap. Bleib auf dem Pfad.</div>
   <button class="btn" id="playBtn">Spielen</button>
+  <button class="btn ghost" id="dailyBtn">🎁 Täglich<span class="badge hidden" id="dailyBadge"></span></button>
   <div class="btn-row">
     <button class="btn ghost small" id="shopBtnStart">Personalisieren 🎨🎵</button>
     <button class="btn ghost small" id="lbBtnStart">🏆 Top</button>
@@ -159,6 +176,7 @@
   <div class="btn-row">
     <button class="btn ghost small" id="shopBtnOver">Personalisieren 🎨🎵</button>
     <button class="btn ghost small" id="lbBtnOver">🏆 Top</button>
+    <button class="btn ghost small" id="dailyBtnOver">🎁 Täglich</button>
   </div>
 </div>
 
@@ -198,6 +216,14 @@
   </div>
   <div class="lb-list" id="lbList">Lädt…</div>
   <button class="btn ghost" id="lbClose">Zurück</button>
+</div>
+
+<!-- Daily / missions screen -->
+<div class="overlay hidden" id="dailyScreen">
+  <div class="shop-title">🎁 Täglich</div>
+  <div class="daily-reward" id="dailyReward"></div>
+  <div class="daily-missions" id="dailyMissions"></div>
+  <button class="btn ghost" id="dailyClose">Zurück</button>
 </div>
 
 <script>
@@ -530,6 +556,12 @@ function doContinue(){
 
 function showGameOver(){
   totalGems += coins; saveShop();
+  // daily mission progress
+  refreshDaily();
+  daily.stats.gems += coins; daily.stats.games += 1;
+  daily.stats.score = Math.max(daily.stats.score, score);
+  daily.stats.zone = Math.max(daily.stats.zone, lastZone);
+  saveDaily(); updateDailyBadge();
   const isNew=score>best;
   if(isNew){ best=score; localStorage.setItem('zigzy_best',best); }
   // leaderboard: auto-track personal bests; prompt for a name once if none set yet
@@ -918,6 +950,98 @@ function saveOverName(){
 }
 $('overNameSave').addEventListener('click',e=>{e.stopPropagation();saveOverName();});
 $('overNameInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); saveOverName(); } });
+
+// ---- daily reward + missions (retention) ----
+let daily = (()=>{ try{ return JSON.parse(localStorage.getItem('zigzy_daily')); }catch(e){ return null; } })()
+  || {lastClaim:'', streak:0, day:'', missions:[], stats:{gems:0,games:0,zone:0,score:0}};
+let dailyReturn='startScreen';
+function saveDaily(){ localStorage.setItem('zigzy_daily', JSON.stringify(daily)); }
+function dayStr(off){ const d=new Date(); if(off) d.setDate(d.getDate()+off); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+function genMissions(){
+  const r=a=>a[Math.floor(Math.random()*a.length)];
+  return [
+    {type:'gems',  target:r([30,50,80]), reward:25, claimed:false},
+    {type:'games', target:r([3,5,8]),    reward:20, claimed:false},
+    {type:'zone',  target:r([2,3,4]),    reward:30, claimed:false},
+  ];
+}
+function refreshDaily(){
+  const t=dayStr(0);
+  if(daily.day!==t){ daily.day=t; daily.missions=genMissions(); daily.stats={gems:0,games:0,zone:0,score:0}; saveDaily(); }
+  if(!daily.stats) daily.stats={gems:0,games:0,zone:0,score:0};
+  if(!daily.missions || !daily.missions.length) daily.missions=genMissions();
+}
+function dailyAvailable(){ return daily.lastClaim !== dayStr(0); }
+function rewardForStreak(s){ const tbl=[10,15,20,25,30,40,100]; return tbl[((s-1)%7+7)%7]; }
+function statFor(type){ return (daily.stats&&daily.stats[type])||0; }
+function missionDone(m){ return statFor(m.type) >= m.target; }
+function missionDesc(m){
+  return m.type==='gems' ? `Sammle ${m.target} Gems`
+       : m.type==='games'? `Spiele ${m.target} Runden`
+       : m.type==='zone' ? `Erreiche Zone ${m.target}`
+       : `Erreiche Score ${m.target}`;
+}
+function claimDaily(){
+  if(!dailyAvailable()) return 0;
+  daily.streak = (daily.lastClaim===dayStr(-1)) ? (daily.streak||0)+1 : 1;
+  daily.lastClaim = dayStr(0);
+  const r=rewardForStreak(daily.streak);
+  totalGems+=r; saveShop(); saveDaily(); beep(880,0.12,'triangle',0.06);
+  return r;
+}
+function anyDailyClaimable(){
+  refreshDaily();
+  if(dailyAvailable()) return true;
+  return daily.missions.some(m=> !m.claimed && missionDone(m));
+}
+function updateDailyBadge(){ const b=$('dailyBadge'); if(b) b.classList.toggle('hidden', !anyDailyClaimable()); }
+function renderDaily(){
+  const rw=$('dailyReward');
+  if(dailyAvailable()){
+    const next = (daily.lastClaim===dayStr(-1)) ? (daily.streak||0)+1 : 1;
+    rw.innerHTML = `<div class="dr-streak">🔥 Tag ${((next-1)%7)+1}</div>`;
+    const btn=document.createElement('button'); btn.className='btn';
+    btn.innerHTML='<i class="gem-ic"></i>'+rewardForStreak(next)+' Tagesbonus';
+    btn.onclick=()=>{ claimDaily(); renderDaily(); };
+    rw.appendChild(btn);
+  } else {
+    rw.innerHTML = `<div class="dr-streak">🔥 ${daily.streak} Tage Streak</div>
+      <div class="sub">Heute abgeholt ✓ — morgen wartet mehr!</div>`;
+  }
+  const ml=$('dailyMissions'); ml.innerHTML='<div class="lbl">Tagesmissionen</div>';
+  for(const m of daily.missions){
+    const prog=Math.min(statFor(m.type), m.target), pct=Math.round(prog/m.target*100), done=prog>=m.target;
+    const row=document.createElement('div'); row.className='mission';
+    row.innerHTML=`<div class="m-top"><span>${missionDesc(m)}</span>
+        <span class="m-rew"><i class="gem-ic"></i>${m.reward}</span></div>
+      <div class="m-bar"><div class="m-fill" style="width:${pct}%"></div></div>
+      <div class="m-prog">${prog}/${m.target}</div>`;
+    if(done && !m.claimed){
+      const b=document.createElement('button'); b.className='btn small'; b.textContent='Abholen';
+      b.onclick=()=>{ m.claimed=true; totalGems+=m.reward; saveShop(); saveDaily(); beep(880,0.1,'triangle',0.06); updateDailyBadge(); renderDaily(); };
+      row.appendChild(b);
+    } else if(m.claimed){
+      const d=document.createElement('div'); d.className='m-done'; d.textContent='✓ Abgeholt'; row.appendChild(d);
+    }
+    ml.appendChild(row);
+  }
+}
+function openDaily(from){
+  dailyReturn=from||'startScreen'; refreshDaily();
+  $(dailyReturn).classList.remove('show'); $(dailyReturn).classList.add('hidden');
+  renderDaily();
+  $('dailyScreen').classList.remove('hidden'); $('dailyScreen').classList.add('show');
+}
+function closeDaily(){
+  $('dailyScreen').classList.add('hidden'); $('dailyScreen').classList.remove('show');
+  $(dailyReturn).classList.remove('hidden'); $(dailyReturn).classList.add('show');
+  updateDailyBadge();
+}
+$('dailyBtn').addEventListener('click',e=>{e.stopPropagation();openDaily('startScreen');});
+$('dailyBtnOver').addEventListener('click',e=>{e.stopPropagation();openDaily('overScreen');});
+$('dailyClose').addEventListener('click',e=>{e.stopPropagation();closeDaily();});
+refreshDaily(); updateDailyBadge();
+setTimeout(()=>{ if(dailyAvailable() && state==='ready') openDaily('startScreen'); }, 700);
 
 reset();
 requestAnimationFrame(loop);
