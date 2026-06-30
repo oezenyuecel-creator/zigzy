@@ -251,6 +251,10 @@ const SKINS=[
   {id:'fire',    name:'Feuer',   cost:300, ball:'#ff5b2e', trail:'#ffb03d', fx:'fire'},
   {id:'galaxy',  name:'Galaxis', cost:450, ball:'#b98cff', trail:'#e6d4ff', fx:'sparkle'},
   {id:'rainbow', name:'Regenbogen', cost:700, ball:'#ff4e8a', trail:'#ffffff', fx:'rainbow'},
+  {id:'frost',   name:'Frost',    cost:250, ball:'#aee9ff', trail:'#e8faff', fx:'ice'},
+  {id:'electric',name:'Elektro',  cost:380, ball:'#7af0ff', trail:'#bfefff', fx:'electric'},
+  {id:'toxic',   name:'Toxic',    cost:520, ball:'#7dff5a', trail:'#c8ffb0', fx:'toxic'},
+  {id:'shadow',  name:'Schatten', cost:650, ball:'#3a2f5e', trail:'#9a7cff', fx:'shadow'},
   {id:'gold',    name:'Gold',    cost:0, premium:true, ball:'#ffe14d', trail:'#fff6c0', fx:'glow'},
 ];
 let totalGems = +(localStorage.getItem('zigzy_gems')||0);
@@ -588,6 +592,22 @@ function update(dt){
       for(let k=0;k<2;k++) particles.push({x:ball.x+(Math.random()-.5)*10, y:ball.y,
         vx:(Math.random()-.5)*26, vy:-30-Math.random()*40, life:0.5,
         color:(Math.random()<.5?'#ff7a2e':'#ffd34e'), r:Math.random()*2.4+1});
+    } else if(csfx==='electric'){          // crackling sparks
+      if(Math.random()<0.85) particles.push({x:ball.x+(Math.random()-.5)*14, y:ball.y+(Math.random()-.5)*14,
+        vx:(Math.random()-.5)*120, vy:(Math.random()-.5)*120, life:0.22,
+        color:(Math.random()<.5?'#ffffff':'#7af0ff'), r:Math.random()*1.8+1, g:0, decay:3.5});
+    } else if(csfx==='ice'){               // slow falling frost
+      if(Math.random()<0.5) particles.push({x:ball.x+(Math.random()-.5)*16, y:ball.y,
+        vx:(Math.random()-.5)*16, vy:10+Math.random()*18, life:0.9,
+        color:(Math.random()<.5?'#e8faff':'#aee9ff'), r:Math.random()*1.8+0.8, g:20, decay:0.9});
+    } else if(csfx==='toxic'){             // rising poison bubbles
+      if(Math.random()<0.6) particles.push({x:ball.x+(Math.random()-.5)*14, y:ball.y,
+        vx:(Math.random()-.5)*18, vy:-20-Math.random()*30, life:1.0,
+        color:(Math.random()<.5?'#7dff5a':'#b6ff8a'), r:Math.random()*2.2+1, g:-30, decay:1.0});
+    } else if(csfx==='shadow'){            // drifting dark smoke
+      if(Math.random()<0.7) particles.push({x:ball.x+(Math.random()-.5)*14, y:ball.y,
+        vx:(Math.random()-.5)*16, vy:-8-Math.random()*16, life:1.1,
+        color:(Math.random()<.5?'#7a5cff':'#3a2f5e'), r:Math.random()*3+2, g:-10, decay:0.8});
     }
     // off-path? (brief grace right after a continue)
     if(reviveGrace>0){ reviveGrace-=dt; }
@@ -600,7 +620,7 @@ function update(dt){
     ball.y_fall=(ball.y_fall||0)+ (380*dt); // fall down screen
   }
   // particles
-  for(const pt of particles){ pt.x+=pt.vx*dt; pt.y+=pt.vy*dt; pt.vy+=400*dt; pt.life-=dt*1.6; }
+  for(const pt of particles){ pt.x+=pt.vx*dt; pt.y+=pt.vy*dt; pt.vy+=(pt.g!=null?pt.g:400)*dt; pt.life-=dt*(pt.decay||1.6); }
   particles=particles.filter(p=>p.life>0);
   // camera
   const tcx=ball.x, tcy=ball.y;
@@ -624,6 +644,11 @@ function render(){
   let glow = 20;
   if(cs.fx==='glow') glow = 28 + Math.sin(performance.now()/180)*12;
   else if(cs.fx==='fire' || rainbow) glow = 26;
+  else if(cs.fx==='electric') glow = 22 + Math.random()*20;   // flicker
+  else if(cs.fx==='ice') glow = 24;
+  else if(cs.fx==='toxic') glow = 26;
+  else if(cs.fx==='shadow') glow = 16;
+  let glowColor = (cs.fx==='shadow') ? cs.trail : ballCol;     // dark ball glows in its trail color
   const tc=themeColors();
   // background gradient (zone-driven)
   const g=ctx.createLinearGradient(0,0,0,H);
@@ -682,7 +707,7 @@ function render(){
   const fallOff = state==='dead' ? (ball.y_fall||0) : 0;
   const [bx,by]=worldToScreen(ball.x, ball.y - fallOff);
   ctx.save();
-  ctx.shadowColor=ballCol; ctx.shadowBlur=glow;
+  ctx.shadowColor=glowColor; ctx.shadowBlur=glow;
   ctx.fillStyle=ballCol;
   ctx.beginPath(); ctx.arc(bx,by,BALL_R,0,7); ctx.fill();
   ctx.fillStyle='rgba(255,255,255,.6)';
@@ -756,7 +781,7 @@ function skinCard(s){
   const prev=document.createElement('div'); prev.className='prev';
   if(s.fx==='rainbow') prev.style.background='conic-gradient(#ff4e8a,#ffd34e,#b6ff3d,#27e0c9,#19f0ff,#a06bff,#ff4e8a)';
   else prev.style.background=`radial-gradient(circle at 35% 30%, rgba(255,255,255,.6), ${s.ball})`;
-  if(s.fx==='glow') prev.style.boxShadow=`0 0 16px ${s.ball}`;
+  if(s.fx && s.fx!=='rainbow') prev.style.boxShadow=`0 0 16px ${s.fx==='shadow'?s.trail:s.ball}`;
   const nm=document.createElement('div'); nm.className='nm'; nm.textContent=s.name;
   const btn=document.createElement('button'); btn.className='act';
   const isOwned=owned.includes(s.id);
