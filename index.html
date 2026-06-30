@@ -58,7 +58,9 @@
     display:flex;align-items:center;gap:6px;font-weight:800;font-size:18px;color:var(--ball);
     opacity:0;transition:opacity .2s;}
   .show-hud #score,.show-hud #coins{opacity:1;}
-  .dot{width:12px;height:12px;border-radius:50%;background:var(--gem);box-shadow:0 0 10px var(--gem);}
+  .dot{width:12px;height:12px;border-radius:2px;transform:rotate(45deg);background:var(--gem);box-shadow:0 0 10px var(--gem);}
+  .gem-ic{display:inline-block;width:11px;height:11px;border-radius:2px;transform:rotate(45deg);
+    background:var(--gem);box-shadow:0 0 7px var(--gem);vertical-align:middle;margin:0 6px 2px 0;}
   .new{font-size:14px;font-weight:800;color:var(--ball);letter-spacing:1px;
     border:1.5px solid var(--ball);border-radius:999px;padding:4px 12px;}
   #soundBtn{position:fixed;top:max(16px,env(safe-area-inset-top));left:16px;z-index:20;
@@ -789,7 +791,7 @@ function skinCard(s){
   else if(s.id===selSkin){ btn.textContent='Aktiv'; btn.classList.add('active'); }
   else if(isOwned){ btn.textContent='Wählen'; btn.classList.add('owned');
     btn.onclick=()=>{ selSkin=s.id; saveShop(); beep(660,0.05); renderShop(); }; }
-  else { btn.innerHTML='💎 '+s.cost; btn.onclick=()=>buySkin(s); }
+  else { btn.innerHTML='<i class="gem-ic"></i>'+s.cost; btn.onclick=()=>buySkin(s); }
   card.appendChild(prev); card.appendChild(nm); card.appendChild(btn);
   return card;
 }
@@ -805,7 +807,7 @@ function trackCard(t){
   const isOwned=ownedTracks.includes(t.id);
   if(t.id===selTrack){ btn.textContent='Aktiv'; btn.classList.add('active'); }
   else if(isOwned){ btn.textContent='Wählen'; btn.classList.add('owned'); btn.onclick=()=>selectTrack(t); }
-  else { btn.innerHTML='💎 '+t.cost; btn.onclick=()=>buyTrack(t); }
+  else { btn.innerHTML='<i class="gem-ic"></i>'+t.cost; btn.onclick=()=>buyTrack(t); }
   card.appendChild(prev); card.appendChild(nm); card.appendChild(btn);
   return card;
 }
