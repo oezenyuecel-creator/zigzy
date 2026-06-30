@@ -131,6 +131,11 @@
   .m-prog{font-size:12px;opacity:.55;text-align:right;}
   .m-done{font-size:13px;font-weight:800;color:var(--path);text-align:center;}
   .mission .btn.small{align-self:center;}
+  .challenge-banner{background:rgba(255,78,138,.15);border:1.5px solid rgba(255,78,138,.5);
+    color:#fff;font-size:15px;font-weight:600;padding:10px 18px;border-radius:14px;max-width:320px;}
+  .challenge-banner b{color:var(--gem);}
+  .over-challenge{font-size:16px;font-weight:700;color:#fff;}
+  .over-challenge b{color:var(--ball);}
   @keyframes zb{0%{opacity:0;transform:translateY(16px) scale(.9)}
     18%{opacity:1;transform:translateY(0) scale(1)}80%{opacity:1}
     100%{opacity:0;transform:translateY(-10px)}}
@@ -148,6 +153,7 @@
 <div class="overlay show" id="startScreen">
   <div class="title">Zigzy</div>
   <div class="sub">Ein Tap. Bleib auf dem Pfad.</div>
+  <div class="challenge-banner hidden" id="challengeBanner"></div>
   <button class="btn" id="playBtn">Spielen</button>
   <button class="btn ghost" id="dailyBtn">🎁 Täglich<span class="badge hidden" id="dailyBadge"></span></button>
   <div class="btn-row">
@@ -172,7 +178,8 @@
   </div>
   <div class="sub hidden" id="overLbMsg">🏆 In der Rangliste!</div>
   <button class="btn" id="retryBtn">Nochmal</button>
-  <button class="btn ghost" id="shareBtn">Score teilen</button>
+  <div class="over-challenge hidden" id="overChallenge"></div>
+  <button class="btn ghost" id="shareBtn">Herausfordern 🔥</button>
   <div class="btn-row">
     <button class="btn ghost small" id="shopBtnOver">Personalisieren 🎨🎵</button>
     <button class="btn ghost small" id="lbBtnOver">🏆 Top</button>
@@ -583,6 +590,13 @@ function showGameOver(){
   $('finalScore').textContent=score;
   $('finalBest').textContent=best;
   $('finalCoins').textContent=coins;
+  if(challenge){
+    const oc=$('overChallenge');
+    oc.innerHTML = score>challenge.score
+      ? `🎉 Du hast <b>${escapeHtml(challenge.name)}</b> geschlagen!`
+      : `Noch <b>${challenge.score-score+1}</b> bis ${escapeHtml(challenge.name)} (${challenge.score})`;
+    oc.classList.remove('hidden');
+  } else { $('overChallenge').classList.add('hidden'); }
   $('newBest').classList.toggle('hidden',!isNew);
   $('overScreen').classList.remove('hidden'); $('overScreen').classList.add('show');
   document.body.classList.remove('show-hud');
@@ -786,14 +800,52 @@ soundBtn.addEventListener('click',e=>{
 
 $('playBtn').addEventListener('click',e=>{e.stopPropagation();startGame();});
 $('retryBtn').addEventListener('click',e=>{e.stopPropagation();startGame();});
-$('shareBtn').addEventListener('click',async e=>{
-  e.stopPropagation();
-  const text=`Ich hab ${best} Punkte in Zigzy! 🟡 Schlag meinen Score 👉`;
+// ---- viral: challenge a friend + shareable score card ----
+let challenge=null;
+(function parseChallenge(){
   try{
-    if(navigator.share){ await navigator.share({title:'Zigzy',text}); }
-    else { await navigator.clipboard.writeText(text); $('shareBtn').textContent='Kopiert! ✓'; }
-  }catch(err){}
-});
+    const p=new URLSearchParams(location.search);
+    const c=parseInt(p.get('c'),10);
+    if(c>0) challenge={score:c, name:(p.get('n')||'Jemand').slice(0,16)};
+  }catch(e){}
+})();
+function showChallengeBanner(){
+  const el=$('challengeBanner'); if(!el) return;
+  if(challenge){ el.innerHTML=`🔥 <b>${escapeHtml(challenge.name)}</b> fordert dich heraus: <b>${challenge.score}</b>`; el.classList.remove('hidden'); }
+  else el.classList.add('hidden');
+}
+function makeScoreCard(sc){
+  return new Promise(resolve=>{
+    const W=1080,H=1080, c=document.createElement('canvas'); c.width=W; c.height=H; const x=c.getContext('2d');
+    const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1b2348'); g.addColorStop(1,'#0b0c16');
+    x.fillStyle=g; x.fillRect(0,0,W,H);
+    x.strokeStyle='rgba(39,224,201,.22)'; x.lineWidth=72; x.lineCap='round'; x.lineJoin='round';
+    let zx=210, zy=300, dir=1; x.beginPath(); x.moveTo(zx,zy);
+    for(let i=0;i<5;i++){ zx+=dir*190; zy+=140; x.lineTo(zx,zy); dir*=-1; } x.stroke();
+    const col=curSkin().ball;
+    x.fillStyle=col; x.shadowColor=col; x.shadowBlur=45; x.beginPath(); x.arc(zx,zy,48,0,7); x.fill(); x.shadowBlur=0;
+    const F='-apple-system,BlinkMacSystemFont,system-ui,sans-serif'; x.textAlign='center';
+    x.fillStyle='#27e0c9'; x.font=`900 100px ${F}`; x.fillText('ZIGZY', W/2, 210);
+    x.fillStyle='#fff'; x.font=`900 360px ${F}`; x.fillText(String(sc), W/2, 660);
+    x.fillStyle='rgba(255,255,255,.85)'; x.font=`700 56px ${F}`; x.fillText(`${(playerName||'Ich')} war hier`, W/2, 770);
+    x.fillStyle='#ffd34e'; x.font=`800 72px ${F}`; x.fillText('Schlag mich! 🔥', W/2, 930);
+    try{ c.toBlob(b=>resolve(b),'image/png'); }catch(e){ resolve(null); }
+  });
+}
+async function challengeShare(){
+  const sc=best;
+  const url=location.origin+location.pathname+`?c=${sc}&n=${encodeURIComponent(playerName||'')}`;
+  const text=`${playerName||'Ich'} schaffe ${sc} in Zigzy 🟡 Schlag mich!`;
+  try{
+    const blob=await makeScoreCard(sc);
+    const file=blob? new File([blob],'zigzy-score.png',{type:'image/png'}) : null;
+    if(file && navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], text, url}); return; }
+    if(navigator.share){ await navigator.share({title:'Zigzy', text, url}); return; }
+    await navigator.clipboard.writeText(text+' '+url); $('shareBtn').textContent='Link kopiert! ✓';
+  }catch(e){}
+}
+$('shareBtn').addEventListener('click',e=>{e.stopPropagation();challengeShare();});
+showChallengeBanner();
 
 // ---- shop ----
 let shopReturn='startScreen';
