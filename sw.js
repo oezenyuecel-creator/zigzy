@@ -1,7 +1,8 @@
-const CACHE = 'zigzy-v18';
+const CACHE = 'zigzy-v19';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest',
-  './icon-180.png', './icon-192.png', './icon-512.png'
+  './icon-180.png', './icon-192.png', './icon-512.png',
+  './dancefloor.m4a'
 ];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

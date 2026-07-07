@@ -305,11 +305,12 @@ function hexToRgb(h){ const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8
 
 // ---- music tracks (buyable with gems, like skins) ----
 const TRACKS=[
-  {id:'classic', name:'Classic', cost:0,   color:'#27e0c9', bpm:112, roots:[220.00,174.61,261.63,196.00], arp:'triangle', bass:'triangle', cutoff:3200},
-  {id:'chill',   name:'Chill',   cost:80,  color:'#7ad7ff', bpm:88,  roots:[196.00,146.83,220.00,164.81], arp:'sine',     bass:'sine',     cutoff:1500},
-  {id:'drive',   name:'Drive',   cost:170, color:'#ff8a3d', bpm:132, roots:[220.00,261.63,196.00,293.66], arp:'sawtooth', bass:'triangle', cutoff:2600},
-  {id:'retro',   name:'8-Bit',   cost:300, color:'#b6ff3d', bpm:120, roots:[261.63,233.08,196.00,220.00], arp:'square',   bass:'square',   cutoff:5200},
-  {id:'dark',    name:'Dark',    cost:480, color:'#a06bff', bpm:100, roots:[164.81,123.47,146.83,110.00], arp:'triangle', bass:'sine',     cutoff:1250},
+  {id:'classic',    name:'Classic',    cost:0,   color:'#27e0c9', bpm:112, roots:[220.00,174.61,261.63,196.00], arp:'triangle', bass:'triangle', cutoff:3200},
+  {id:'chill',      name:'Chill',      cost:80,  color:'#7ad7ff', bpm:88,  roots:[196.00,146.83,220.00,164.81], arp:'sine',     bass:'sine',     cutoff:1500},
+  {id:'drive',      name:'Drive',      cost:170, color:'#ff8a3d', bpm:132, roots:[220.00,261.63,196.00,293.66], arp:'sawtooth', bass:'triangle', cutoff:2600},
+  {id:'retro',      name:'8-Bit',      cost:300, color:'#b6ff3d', bpm:120, roots:[261.63,233.08,196.00,220.00], arp:'square',   bass:'square',   cutoff:5200},
+  {id:'dark',       name:'Dark',       cost:480, color:'#a06bff', bpm:100, roots:[164.81,123.47,146.83,110.00], arp:'triangle', bass:'sine',     cutoff:1250},
+  {id:'dancefloor', name:'Dancefloor', cost:0,   color:'#ff6b9d', src:'dancefloor.m4a'},
 ];
 let ownedTracks = (()=>{ try{ return JSON.parse(localStorage.getItem('zigzy_tracks')||'["classic"]'); }catch(e){ return ['classic']; } })();
 let selTrack = localStorage.getItem('zigzy_track')||'classic';
@@ -431,6 +432,7 @@ function beep(freq,dur,type='sine',vol=0.05){
 const Music=(()=>{
   let playing=false, timer=null, step=0, nextTime=0, bus=null, filt=null;
   let T=null, S=0;                           // current track + 16th-note duration
+  let audioEl=null;                          // for file-based tracks
   function tone(freq,t,dur,type,vol){
     const o=actx.createOscillator(), g=actx.createGain();
     o.type=type; o.frequency.value=freq; o.connect(g); g.connect(bus);
@@ -472,18 +474,24 @@ const Music=(()=>{
   return {
     start(){
       if(playing) return; ensureAudio(); if(!actx) return;
-      T=curTrack(); S=60/T.bpm/4;
-      playing=true;
-      filt=actx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=T.cutoff;
-      bus=actx.createGain(); bus.gain.value=0.5;
-      bus.connect(filt); filt.connect(actx.destination);
-      step=0; nextTime=actx.currentTime+0.06; schedule();
+      T=curTrack(); playing=true;
+      if(T.src){
+        audioEl=new Audio(T.src); audioEl.loop=true; audioEl.volume=0.5;
+        audioEl.play().catch(()=>{});
+      } else {
+        S=60/T.bpm/4;
+        filt=actx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value=T.cutoff;
+        bus=actx.createGain(); bus.gain.value=0.5;
+        bus.connect(filt); filt.connect(actx.destination);
+        step=0; nextTime=actx.currentTime+0.06; schedule();
+      }
     },
     restart(){ if(playing){ this.stop(); this.start(); } },
     stop(){
       playing=false; if(timer) clearTimeout(timer); timer=null;
       if(bus){ try{bus.disconnect();}catch(e){} bus=null; }
       if(filt){ try{filt.disconnect();}catch(e){} filt=null; }
+      if(audioEl){ audioEl.pause(); audioEl.currentTime=0; audioEl=null; }
     }
   };
 })();
@@ -888,7 +896,7 @@ function trackCard(t){
   prev.textContent='🎵';
   const nm=document.createElement('div'); nm.className='nm'; nm.textContent=t.name;
   const btn=document.createElement('button'); btn.className='act';
-  const isOwned=ownedTracks.includes(t.id);
+  const isOwned=ownedTracks.includes(t.id)||t.cost===0;
   if(t.id===selTrack){ btn.textContent='Aktiv'; btn.classList.add('active'); }
   else if(isOwned){ btn.textContent='Wählen'; btn.classList.add('owned'); btn.onclick=()=>selectTrack(t); }
   else { btn.innerHTML='<i class="gem-ic"></i>'+t.cost; btn.onclick=()=>buyTrack(t); }
