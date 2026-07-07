@@ -313,7 +313,7 @@ const TRACKS=[
   {id:'dancefloor', name:'Dancefloor', cost:0,   color:'#ff6b9d', src:'dancefloor.m4a'},
 ];
 let ownedTracks = (()=>{ try{ return JSON.parse(localStorage.getItem('zigzy_tracks')||'["classic"]'); }catch(e){ return ['classic']; } })();
-let selTrack = localStorage.getItem('zigzy_track')||'classic';
+let selTrack = localStorage.getItem('zigzy_track')||'dancefloor';
 function curTrack(){ return TRACKS.find(t=>t.id===selTrack)||TRACKS[0]; }
 function saveTracks(){ localStorage.setItem('zigzy_tracks',JSON.stringify(ownedTracks)); localStorage.setItem('zigzy_track',selTrack); }
 
